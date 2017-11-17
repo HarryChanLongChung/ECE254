@@ -7,17 +7,19 @@
 
 // #define DEBUG true;
 
+// Global variables
 int NUM_INT;
 int BUFFER_SIZE;
 int NUM_PROD;
 int NUM_CON;
 
-int counter;
+int counter = 0;
 int *buffer;
 int *pid;
 int *cid;
 int buf_index = -1;
 int ctotal = 0;
+int cnum;
 
 sem_t spaces;
 sem_t items;
@@ -33,12 +35,12 @@ double t2;
 int produce(int pid)
 {
 #ifdef DEBUG
-  printf("Producer %d produced %d.\n", pid, counter);
+  printf("Producer %d produced %d.\n", pid, counter + 1);
 #endif
   return counter++;
 }
 
-int consume(int cid, int value, int ctotal)
+void consume(int cid, int value, int ctotal)
 {
 #ifdef DEBUG
   printf("Consumer %d consumed %d.\n", cid, ctotal);
@@ -48,12 +50,6 @@ int consume(int cid, int value, int ctotal)
   {
     printf("%d %d %d\n", cid, value, sqrt_value);
   }
-
-  if (ctotal == NUM_INT)
-  {
-    return 1;
-  }
-  return 0;
 }
 
 void *producer(void *arg)
@@ -63,19 +59,21 @@ void *producer(void *arg)
   {
     pthread_mutex_lock(&prod_mutex);
 
+    // When all items are produced
     if (counter == NUM_INT)
     {
       pthread_mutex_unlock(&prod_mutex);
       break;
     }
+    // Produce item if mod value is pid
     else if (counter % NUM_PROD == *pid)
     {
       int v = produce(*pid);
+      pthread_mutex_unlock(&prod_mutex);
       sem_wait(&spaces);
       pthread_mutex_lock(&buffer_mutex);
       buffer[++buf_index] = v;
       pthread_mutex_unlock(&buffer_mutex);
-      pthread_mutex_unlock(&prod_mutex);
       sem_post(&items);
     }
     else
@@ -93,28 +91,23 @@ void *consumer(void *arg)
   {
     pthread_mutex_lock(&con_mutex);
 
-    if (ctotal == NUM_INT)
+    // Reduce number of consumers if number of remaining items is less than number of remaining consumers
+    if (NUM_INT - ctotal < cnum)
     {
+      cnum--;
       pthread_mutex_unlock(&con_mutex);
       break;
     }
 
+    pthread_mutex_unlock(&con_mutex);
     sem_wait(&items);
     pthread_mutex_lock(&buffer_mutex);
     int temp = buffer[buf_index];
     buffer[buf_index--] = -1;
-    pthread_mutex_unlock(&buffer_mutex);
     ctotal++;
-    int isLast = consume(*cid, temp, ctotal);
-    pthread_mutex_unlock(&con_mutex);
-    if (isLast == 1)
-    {
-      gettimeofday(&tv, NULL);
-      t2 = tv.tv_sec + tv.tv_usec / 1000000.0;
-
-      printf("System execution time: %.6lf seconds\n", t2 - t1);
-    }
+    pthread_mutex_unlock(&buffer_mutex);
     sem_post(&spaces);
+    consume(*cid, temp, ctotal);
   }
   pthread_exit(NULL);
 }
@@ -132,7 +125,7 @@ int main(int argc, char **argv)
   NUM_INT = atoi(argv[1]);
   BUFFER_SIZE = atoi(argv[2]);
   NUM_PROD = atoi(argv[3]);
-  NUM_CON = atoi(argv[4]);
+  NUM_CON = cnum = atoi(argv[4]);
 
   // Check if arguments are valid
   if (NUM_INT <= 0 || BUFFER_SIZE <= 0 || NUM_PROD <= 0 || NUM_CON <= 0)
@@ -145,10 +138,11 @@ int main(int argc, char **argv)
   counter = 0;
 
   // Allocate and assign buffer
-  int i;
   buffer = malloc(BUFFER_SIZE * sizeof(int));
+  int i, j, k;
 
-  for (int i = 0; i < BUFFER_SIZE; i++)
+  // Initialize buffer
+  for (i = 0; i < BUFFER_SIZE; i++)
   {
     buffer[i] = -1;
   }
@@ -171,30 +165,37 @@ int main(int argc, char **argv)
   t1 = tv.tv_sec + tv.tv_usec / 1000000.0;
 
   // Create producer threads
-  for (int j = 0; j < NUM_PROD; j++)
+  for (j = 0; j < NUM_PROD; j++)
   {
     pid[j] = j;
     pthread_create(&prod[j], NULL, producer, &pid[j]);
   }
 
   // Create consumer threads
-  for (int k = 0; k < NUM_CON; k++)
+  for (k = 0; k < NUM_CON; k++)
   {
     cid[k] = k;
     pthread_create(&con[k], NULL, consumer, &cid[k]);
   }
 
   // Wait for producer threads exit
-  for (int j = 0; j < NUM_PROD; j++)
+  for (j = 0; j < NUM_PROD; j++)
   {
     pthread_join(prod[j], NULL);
   }
 
   // Wait for consumer threads exit
-  for (int k = 0; k < NUM_CON; k++)
+  for (k = 0; k < NUM_CON; k++)
   {
     pthread_join(con[k], NULL);
   }
+
+  // Calculate time after all consumers exit
+  gettimeofday(&tv, NULL);
+  t2 = tv.tv_sec + tv.tv_usec / 1000000.0;
+
+  // Print time
+  printf("System execution time: %.6lf seconds\n", t2 - t1);
 
   // Deallocate pointers
   free(buffer);
