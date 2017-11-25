@@ -1,0 +1,1 @@
+For inter_thread.c: gcc inter_thread.c -lm -pthread -o produce
