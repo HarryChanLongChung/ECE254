@@ -1,0 +1,11 @@
+inter_process.c contain the approach using multi-processes
+inter_thread.c contain the approach using multi-threads
+To compile both files, use:
+gcc -lrt -lm inter_process.c or 
+gcc -lrt -lm inter_thread.c
+
+remove queue name may be required:
+rm /dev/mqueue/254_harry_space && rm /dev/mqueue/254_harry_item
+
+Lab3_report.pdf contain the required test results and source code required
+in the lab manual.
